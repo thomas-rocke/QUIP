@@ -1428,8 +1428,8 @@ end subroutine ScaLAPACK_pdtrtrs_wrapper
 
 subroutine ScaLAPACK_pdgemr2d_wrapper(A_info, A_data, B_info, B_data, glob_cntxt, m, n, ia, ja, ib, jb)
   ! Copy general distributed submatrix A_data(ia:ia+m, ja:ja+n) to B_data(ib:ib+m, jb:jb+n)
-  type(Matrix_ScaLAPACK_Info), intent(inout) :: A_info, B_info
-  real(dp), intent(inout), dimension(:,:) :: A_data ! input distributed matrix
+  type(Matrix_ScaLAPACK_Info), intent(in) :: A_info, B_info
+  real(dp), intent(in), dimension(:,:) :: A_data ! input distributed matrix
   real(dp), intent(inout), dimension(:,:)  :: B_data ! target distributed matrix
   integer :: glob_cntxt ! Context spanning both A and B
   integer :: m, n ! size of submatrix
@@ -1483,18 +1483,18 @@ subroutine ScaLAPACK_to_array1d(A_info, A_data, array)
   real(dp), intent(in), dimension(:,:) :: A_data
   real(dp), intent(out), dimension(:) :: array
 
-  integer :: info
+  type(Matrix_ScaLAPACK_Info) :: arr_info
+  real(dp), allocatable :: tmp_array(:, :)
+
   integer :: nrows, ncols
-  integer, dimension(9) :: desc
 
 #ifdef SCALAPACK
   nrows = min(A_info%N_R, size(array, 1))
   ncols = 1
-  array(nrows+1:) = 0.0_dp
-  call descinit(desc, nrows, ncols, nrows, ncols, 0, 0, &
-                A_info%ScaLAPACK_obj%blacs_context, size(array, 1), info)
-  call pdgeadd("N", nrows, ncols, 1.0_dp, A_data, 1, 1, A_info%desc, &
-               0.0_dp, array, 1, 1, desc)
+  allocate(tmp_array(nrows, ncols)) ! Required for matching rank
+  
+  call ScaLAPACK_to_array2d(A_info, A_data, tmp_array)
+  array(:) = tmp_array(:, 1)
 #endif
 end subroutine ScaLAPACK_to_array1d
 
@@ -1503,14 +1503,15 @@ subroutine ScaLAPACK_to_array2d(A_info, A_data, array)
   real(dp), intent(in), dimension(:,:) :: A_data
   real(dp), intent(out), dimension(:,:) :: array
 
-  integer :: info
-  integer, dimension(9) :: desc
+  type(Matrix_ScaLAPACK_Info) :: arr_info
+
+  integer :: nrows, ncols
 
 #ifdef SCALAPACK
-  call descinit(desc, A_info%N_R, A_info%N_C, A_info%N_R, A_info%N_C, 0, 0, &
-                A_info%ScaLAPACK_obj%blacs_context, A_info%N_R, info)
-  call pdgeadd("N", A_info%N_R, A_info%N_C, 1.0_dp, A_data, 1, 1, A_info%desc, &
-               0.0_dp, array, 1, 1, desc)
+nrows = min(A_info%N_R, size(array, 1))
+ncols = min(A_info%N_C, size(array, 2))
+call Initialise(arr_info, nrows, ncols, nrows, ncols, A_info%ScaLAPACK_obj)
+call ScaLAPACK_pdgemr2d_wrapper(A_info, A_data, arr_info, array, A_info%ScaLAPACK_obj%blacs_context, nrows, ncols)
 #endif
 end subroutine ScaLAPACK_to_array2d
 
