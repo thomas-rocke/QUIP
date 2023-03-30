@@ -1538,7 +1538,6 @@ subroutine ScaLAPACK_to_array1d(A_info, A_data, array)
   tmp_array(1:nrows, ncols:ncols) => array
   
   call ScaLAPACK_to_array2d(A_info, A_data, tmp_array)
-  array(:) = tmp_array(:, 1)
 #endif
 end subroutine ScaLAPACK_to_array1d
 
