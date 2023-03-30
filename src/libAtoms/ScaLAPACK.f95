@@ -1481,17 +1481,19 @@ end subroutine ScaLAPACK_matrix_QR_solve
 subroutine ScaLAPACK_to_array1d(A_info, A_data, array)
   type(Matrix_ScaLAPACK_Info), intent(in) :: A_info
   real(dp), intent(in), dimension(:,:) :: A_data
-  real(dp), intent(out), dimension(:) :: array
+  real(dp), intent(out), dimension(:), target :: array
 
   type(Matrix_ScaLAPACK_Info) :: arr_info
-  real(dp), allocatable :: tmp_array(:, :)
+  real(dp), pointer :: tmp_array(:, :)
 
-  integer :: nrows, ncols
+  integer :: nrows
+  integer, parameter :: ncols = 1
+
 
 #ifdef SCALAPACK
   nrows = min(A_info%N_R, size(array, 1))
-  ncols = 1
-  allocate(tmp_array(nrows, ncols)) ! Required for matching rank
+
+  tmp_array(1:nrows, ncols:ncols) => array
   
   call ScaLAPACK_to_array2d(A_info, A_data, tmp_array)
   array(:) = tmp_array(:, 1)
