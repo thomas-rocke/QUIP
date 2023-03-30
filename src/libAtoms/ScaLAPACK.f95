@@ -1466,6 +1466,48 @@ subroutine ScaLAPACK_pdgemr2d_wrapper(A_info, A_data, B_info, B_data, glob_cntxt
 #endif
 end subroutine ScaLAPACK_pdgemr2d_wrapper
 
+subroutine ScaLAPACK_pdtrmr2d_wrapper(uplo, diag, A_info, A_data, B_info, B_data, glob_cntxt, m, n, ia, ja, ib, jb)
+  ! Copy trapezoidal distributed submatrix A_data(ia:ia+m, ja:ja+n) to B_data(ib:ib+m, jb:jb+n)
+  character(len=1), intent(in) :: uplo, diag ! copy upper/lower triangle; copy diag
+  type(Matrix_ScaLAPACK_Info), intent(in) :: A_info, B_info
+  real(dp), intent(in), dimension(:,:) :: A_data ! input distributed matrix
+  real(dp), intent(inout), dimension(:,:)  :: B_data ! target distributed matrix
+
+  integer :: glob_cntxt ! Context spanning both A and B
+  integer :: m, n ! size of submatrix
+  integer, optional :: ia, ja ! start coords in A; defaults to (1, 1)
+  integer, optional :: ib, jb ! start coords in B; defaults to (1, 1)
+
+  integer :: my_ia, my_ja, my_ib, my_jb
+
+#ifdef SCALAPACK
+  if (present(ia)) then
+    my_ia = ia
+  else
+    my_ia = 1
+  end if
+  if (present(ja)) then
+    my_ja = ja
+  else
+    my_ja = 1
+  end if
+  if (present(ib)) then
+    my_ib = ib
+  else
+    my_ib = 1
+  end if
+  if (present(jb)) then
+    my_jb = jb
+  else
+    my_jb = 1
+  end if
+
+  call pdtrmr2d(uplo, diag, m, n, A_data, my_ia, my_ja, A_info%desc, &
+    B_data, my_ib, my_jb, B_info%desc, glob_cntxt)
+
+#endif
+end subroutine ScaLAPACK_pdtrmr2d_wrapper
+
 subroutine ScaLAPACK_matrix_QR_solve(A_info, A_data, B_info, B_data, cheat_nb_A)
   type(Matrix_ScaLAPACK_Info), intent(inout) :: A_info, B_info
   real(dp), intent(inout), dimension(:,:) :: A_data, B_data
