@@ -1439,26 +1439,13 @@ subroutine ScaLAPACK_pdgemr2d_wrapper(A_info, A_data, B_info, B_data, glob_cntxt
   integer :: my_ia, my_ja, my_ib, my_jb
 
 #ifdef SCALAPACK
-  if (present(ia)) then
-    my_ia = ia
-  else
-    my_ia = 1
-  end if
-  if (present(ja)) then
-    my_ja = ja
-  else
-    my_ja = 1
-  end if
-  if (present(ib)) then
-    my_ib = ib
-  else
-    my_ib = 1
-  end if
-  if (present(jb)) then
-    my_jb = jb
-  else
-    my_jb = 1
-  end if
+  my_ia = optional_default(1, ia)
+    
+  my_ja = optional_default(1, ja)
+
+  my_ib = optional_default(1, ib)
+
+  my_jb = optional_default(1, jb)
 
   call pdgemr2d(m, n, A_data, my_ia, my_ja, A_info%desc, &
     B_data, my_ib, my_jb, B_info%desc, glob_cntxt)
@@ -1481,26 +1468,13 @@ subroutine ScaLAPACK_pdtrmr2d_wrapper(uplo, diag, A_info, A_data, B_info, B_data
   integer :: my_ia, my_ja, my_ib, my_jb
 
 #ifdef SCALAPACK
-  if (present(ia)) then
-    my_ia = ia
-  else
-    my_ia = 1
-  end if
-  if (present(ja)) then
-    my_ja = ja
-  else
-    my_ja = 1
-  end if
-  if (present(ib)) then
-    my_ib = ib
-  else
-    my_ib = 1
-  end if
-  if (present(jb)) then
-    my_jb = jb
-  else
-    my_jb = 1
-  end if
+  my_ia = optional_default(1, ia)
+  
+  my_ja = optional_default(1, ja)
+
+  my_ib = optional_default(1, ib)
+
+  my_jb = optional_default(1, jb)
 
   call pdtrmr2d(uplo, diag, m, n, A_data, my_ia, my_ja, A_info%desc, &
     B_data, my_ib, my_jb, B_info%desc, glob_cntxt)
