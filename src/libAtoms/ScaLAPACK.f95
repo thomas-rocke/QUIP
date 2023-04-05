@@ -362,7 +362,9 @@ subroutine ScaLAPACK_init_matrix_desc(this, N_R, N_C, NB_R, NB_C, desc, l_N_R, l
     lld = l_N_R
     if (l_N_r < 1) lld = 1
 
-    call descinit (desc, N_R, use_N_C, NB_R, use_NB_C, 0, 0, this%blacs_context, lld, err)
+    if (this%blacs_context /= -1) then !context = -1 flags rank not in context
+      call descinit (desc, N_R, use_N_C, NB_R, use_NB_C, 0, 0, this%blacs_context, lld, err)
+    end if
   endif
 #endif
 end subroutine ScaLAPACK_init_matrix_desc

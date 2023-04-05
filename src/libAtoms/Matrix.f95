@@ -225,7 +225,7 @@ subroutine MatrixD_Initialise(this, N, M, NB, MB, scalapack_obj, use_allocate)
 
   if (.not. this%use_allocate) return
 
-  if (this%l_N > 0 .and. this%l_M > 0) then
+  if (this%l_N > 0 .and. this%l_M > 0 .and. this%ScaLAPACK_Info_obj%ScaLAPACK_obj%blacs_context /= -1) then
     allocate(this%data(this%l_N, this%l_M))
     call ALLOC_TRACE("MatrixD_Initialise "//this%l_N//" "//this%l_M, size(this%data)*REAL_SIZE)
   else
