@@ -48,7 +48,7 @@ POT_SOURCES =  Potential.f95 Potential_simple.f95
 ifeq (${HAVE_TB},1)
 	POT_SOURCES += TB.f95
 endif
-GAP_SOURCES =  descriptors.f95
+GAP_SOURCES =  descriptors.f95 clustering.f95
 
 LIBATOMS_FILES = $(addprefix ../../src/libAtoms/,${LIBATOMS_SOURCES})
 POT_FILES = $(addprefix ../../src/Potentials/,${POT_SOURCES})
