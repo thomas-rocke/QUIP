@@ -117,8 +117,12 @@ class DescXMLWrapper():
             quip_result = self.quip_desc.calc(structure)
 
             x = quip_result["data"]
-            x_cut = quip_result["covariance_cutoff"]
 
+            if "covariance_cutoff" in quip_result.keys():
+                x_cut = quip_result["covariance_cutoff"]
+            else:
+                x_cut = np.ones((x.shape[0]))
+                
             k = self.cov_func(x, self.sparseX, x_cut, self.sparse_cuts, self.cov_prop)
             K[i, :] = np.sum(k, axis=0)
         return K
