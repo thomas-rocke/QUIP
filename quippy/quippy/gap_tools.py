@@ -116,15 +116,13 @@ class DescXMLWrapper():
         for i, structure in enumerate(structures):
             quip_result = self.quip_desc.calc(structure)
 
-            x = quip_result["data"]
-
             if "covariance_cutoff" in quip_result.keys():
+                # Has data for given descriptor
+                x = quip_result["data"]
                 x_cut = quip_result["covariance_cutoff"]
-            else:
-                x_cut = np.ones((x.shape[0]))
-                
-            k = self.cov_func(x, self.sparseX, x_cut, self.sparse_cuts, self.cov_prop)
-            K[i, :] = np.sum(k, axis=0)
+
+                k = self.cov_func(x, self.sparseX, x_cut, self.sparse_cuts, self.cov_prop)
+                K[i, :] = np.sum(k, axis=0)
         return K
 
 class GAPXMLWrapper():
