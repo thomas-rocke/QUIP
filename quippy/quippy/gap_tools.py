@@ -5,6 +5,7 @@ import os
 from quippy.descriptors import Descriptor
 from quippy.potential import Potential
 from ase.data import chemical_symbols
+from quippy.clustering import get_cur_scores
 
 try: # Try to use triangular solve (faster), if available
     from scipy.linalg import solve_triangular as solve
@@ -12,6 +13,22 @@ except ImportError: # Revert to general solve
     solve = np.linalg.solve
 
 
+def ard_se(x, y, x_cut, y_cut, theta):
+    N = x.shape[0]
+    M = y.shape[0]
+    K = np.zeros((N, M))
+
+    for i in range(N):
+        for j in range(M):
+            K[i, j] = np.exp(-(x[i] - y[j])**2 / (2 * theta**2)) * x_cut[i] * y_cut[j]
+    return K
+
+def dot_product(x, y, x_cut, y_cut, xi):
+    K = ((x @ y.T) ** xi) * (x_cut[:, np.newaxis] @ y_cut[:, np.newaxis].T)
+    return K 
+
+# xml covariance_type int -> covariance kernel function
+kerns = [None, ard_se, dot_product]
 
 
 class DescXMLWrapper():
@@ -73,7 +90,38 @@ class DescXMLWrapper():
                             for Z in self.Zs]) + " " + self.desc_type
 
         self.quip_desc = Descriptor(self._cmd)
+        self.cov_func = kerns[self._int_cov_type]
 
+        self.sparseX = None
+
+    def set_sparsex(self, sparsex):
+        self.sparseX = sparsex
+
+    def get_energy_design(self, structures):
+        '''
+        Gets the segment of a design matrix corresponding to an energy observation on the structure for this descriptor
+        ''' 
+        from ase.atoms import Atoms
+
+        if type(structures) == Atoms:
+            structures = [structures]
+
+        if self.sparseX is None:
+            raise RuntimeError("Sparsex not defined for all descs. Use desc.set_sparsex().")
+
+        N = len(structures)
+        M = self.nsparse
+
+        K = np.zeros((N, M))
+        for i, structure in enumerate(structures):
+            quip_result = self.quip_desc.calc(structure)
+
+            x = quip_result["data"]
+            x_cut = quip_result["covariance_cutoff"]
+
+            k = self.cov_func(x, self.sparseX, x_cut, self.sparse_cuts, self.cov_prop)
+            K[i, :] = np.sum(k, axis=0)
+        return K
 
 class GAPXMLWrapper():
     '''
@@ -129,6 +177,16 @@ class GAPXMLWrapper():
             self.mean_weights = mean_weights
         else:
             self.mean_weights = self.weights.copy()
+
+        self.sparsex_loaded = False
+
+    def load_sparsex(self):
+        if not self.sparsex_loaded:
+            for i, desc in enumerate(self.descriptors):
+                sparse_path = self.path_to_xml + ".sparseX." + self.gap_label + str(i+1)
+                sparseX = np.loadtxt(sparse_path).reshape((desc.nsparse, -1))
+                desc.set_sparsex(sparseX)
+            self.sparsex_loaded = True
 
     def save(self, fname):
         '''
@@ -239,6 +297,7 @@ def read_xml(path_to_xml):
 
     
     gap = GAPXMLWrapper(parse(path_to_xml), xml_dir=xml_dir)
+    gap.path_to_xml = path_to_xml
 
     R_fname = path_to_xml + ".R." + gap.gap_label
 
@@ -277,3 +336,112 @@ def get_calc_committee(path_to_xml, committee_size, return_core_wrapper=False):
         return calc_committee, gap_wrapper
     else:
         return calc_committee
+
+
+def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[], descriptor_weights=1.0, existing_dataset_cache_name=None):
+    '''
+    Compute "GAP Scores" for sampling a sparse set of the input structures
+
+    Uses the sparse GP defined by gapxml to compute the design matrix associated with both structures and existing_dataset,
+        and use the provided sparsifier to score entries of the design matrix.
+
+    2B descriptors are especially slow to compute at the design matrix level, and don't contribute much information to the system.
+    They can be essentially "turned off" by setting their descriptor_weights to zero (E.G. descriptor_weights=np.array([0.0, 0.0, 0.0, 1.0, 1.0]))
+        for a SOAP-only scoring of a 2-species 2B+SOAP GAP
+
+    gapxml: GAPXMLWrapper object
+        GAP model to use in computing the design matrix
+    structures: list of ase Atoms objects
+        Structures to compute scores for
+    sparsifier: function f(vecs) -> scores
+        Function which computes N scores given an NxM matrix of vector quantities
+    existing_dataset: list of ase Atoms objects
+        "Core" structures which are not scored, but influence the scoring of structures
+        The vectors of both structures and existing_dataset are passed to sparsifier, but only scores
+        associated with structures are used
+    descriptor_weights: array of floats
+        Descriptor-level weightings to bias scoring towards a particular descriptor.
+    existing_dataset_cache_name: string
+        Filename passed to np.save, to cache the design matrix entries for existing_dataset (to save on recomputation)
+
+    returns an array of scores, len(scores) == len(structures), np.sum(scores) == 1
+    '''
+
+    N_existing = len(existing_dataset)
+    N_struct = len(structures)
+    N = N_existing + N_struct
+
+    Ms = [desc.nsparse for desc in gapxml.descriptors]
+    M = sum(Ms)
+
+    ndesc = gapxml.num_desc
+
+    if np.issubdtype(type(descriptor_weights), np.floating) or np.issubdtype(type(descriptor_weights), np.integer):
+        weights = np.ones(ndesc)
+    else:
+        assert len(descriptor_weights) == ndesc
+        weights = np.abs(np.array(descriptor_weights))
+
+        # Only relative scaling matters, ensure numbers are "nice"
+        weights /= np.max(weights)
+
+    # Ensure sparsex have been read from file
+    gapxml.load_sparsex()
+
+    have_existing_design = False
+    if existing_dataset_cache_name is not None and N_existing > 0:
+        try:
+            K_existing = np.load(existing_dataset_cache_name + ".npy")
+            # Make sure design matrix is of correct shape
+            assert K_existing.shape == (N_existing, M)
+        except (FileNotFoundError, AssertionError) as e:
+            # Fine if no K found, just needs to be recomputed
+            if type(e) == AssertionError:
+                print(f"existing_dataset design matrix was of the wrong shape (got {K_existing.shape}, expected {(N_existing, M)}). Recomputing...")
+            pass
+        else:
+            # else clause is triggered iff no exceptions were raised
+            have_existing_design = True
+
+    if not have_existing_design and N_existing > 0:
+        # Compute design matrix for existing_dataset
+        K_existing = np.zeros((N_existing, M))
+
+        m_start = 0
+
+        for i, desc in enumerate(gapxml.descriptors):
+            if weights[i] < 1e-3: # Weight too small, ignore descriptor
+                continue
+            
+            K_existing[:, m_start:m_start + desc.nsparse] = desc.get_energy_design(existing_dataset)
+            m_start += desc.nsparse
+        
+        # Cache K_existing for reruns
+        if existing_dataset_cache_name is not None: 
+            np.save(existing_dataset_cache_name, K_existing)
+
+    # Compute the design matrix for the input structures
+    K_struct = np.zeros((N_struct, M))
+
+    m_start = 0
+
+    for i, desc in enumerate(gapxml.descriptors):
+        if weights[i] < 1e-3: # Weight too small, ignore descriptor
+            continue
+        
+        K_struct[:, m_start:m_start + desc.nsparse] = desc.get_energy_design(structures)
+        m_start += desc.nsparse
+
+    if N_existing > 0:
+        K = np.concatenate((K_existing, K_struct), axis=0)
+    else:
+        K = K_struct
+
+
+    scores = sparsifier(K)[N_existing:]
+
+    print(N_struct, scores.shape)
+
+    scores /= np.sum(scores)
+
+    return scores
