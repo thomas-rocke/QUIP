@@ -341,7 +341,8 @@ def get_calc_committee(path_to_xml, committee_size, return_core_wrapper=False):
 
 
 def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[], descriptor_weights=1.0, 
-              existing_dataset_cache_name=None, clip_scores=True):
+              existing_dataset_cache_name=None, clip_scores=True, project=False, weight_tol=1e-6,
+              regularisation=1e-3):
     '''
     Compute "GAP Scores" for sampling a sparse set of the input structures
 
@@ -369,6 +370,15 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
     clip_scores: bool
         Whether scores should be clipped before normalisation
         Can help prevent extremely unbalanced weighting during sampling
+    project: bool
+        Whether to use an estimate of K_NN for the CUR sampling (project=True; K_NN = K_NM K_MM^-2 K_MN)
+        or to use K_NM for the CUR sampling (project=False)
+    weight_tol: float
+        Skip descriptor evaluation if descriptor weight < weight_tol
+        WARNING: Also affects the dataset cache, if it is constructed from this call.
+    regularisation: float
+        Regularisation term added during the cholesky decomposition of K_MM if project=True
+        L L^T = K_MM + regularisation * I_(MxM)
 
     returns an array of scores, len(scores) == len(structures), np.sum(scores) == 1
     '''
@@ -416,9 +426,8 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         m_start = 0
 
         for i, desc in enumerate(gapxml.descriptors):
-            if weights[i] < 1e-3: # Weight too small, ignore descriptor
+            if weights[i] < weight_tol:
                 continue
-            
             K_existing[:, m_start:m_start + desc.nsparse] = desc.get_energy_design(existing_dataset)
             m_start += desc.nsparse
         
@@ -431,10 +440,9 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
 
     m_start = 0
 
-    for i, desc in enumerate(gapxml.descriptors):
-        if weights[i] < 1e-3: # Weight too small, ignore descriptor
-            continue
-        
+    for i, desc in enumerate(gapxml.descriptors):  
+        if weights[i] < weight_tol:
+                continue      
         K_struct[:, m_start:m_start + desc.nsparse] = desc.get_energy_design(structures)
         m_start += desc.nsparse
 
@@ -442,6 +450,32 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         K = np.concatenate((K_existing, K_struct), axis=0)
     else:
         K = K_struct
+
+    # Apply weights to K_NM
+    m_start = 0
+    for i, desc in enumerate(gapxml.descriptors):  
+        K[:, m_start:m_start + desc.nsparse] *= weights[i]
+
+    if project:
+        # Use K_MM to project K_NM onto K_NN
+        # Essentially uses the same sparse approximation as a sparse GP (as used in GAP)
+        # to estimate K_NN without directly computing 
+        K_MM = np.zeros((M, M))
+
+        m_start = 0
+
+        for i, desc in enumerate(gapxml.descriptors): 
+            if weights[i] < weight_tol:
+                continue           
+            K_MM[m_start:m_start + desc.nsparse, m_start:m_start + desc.nsparse] = desc.get_energy_design(structures) * weights[i]
+            m_start += desc.nsparse
+
+        L = np.linalg.cholesky(K_MM + regularisation * np.eye(M))
+
+        # Solve K_MM = K_NM @ K_MM^-1 @ K_MN to find K_MM
+        right = np.linalg.solve(K.T, L.T)
+        K_NN = right.T @ right
+        K = K_NN
 
 
     scores = sparsifier(K, clip_scores=clip_scores)[N_existing:]
