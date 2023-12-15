@@ -340,7 +340,8 @@ def get_calc_committee(path_to_xml, committee_size, return_core_wrapper=False):
         return calc_committee
 
 
-def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[], descriptor_weights=1.0, existing_dataset_cache_name=None):
+def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[], descriptor_weights=1.0, 
+              existing_dataset_cache_name=None, clip_scores=True):
     '''
     Compute "GAP Scores" for sampling a sparse set of the input structures
 
@@ -365,6 +366,9 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         Descriptor-level weightings to bias scoring towards a particular descriptor.
     existing_dataset_cache_name: string
         Filename passed to np.save, to cache the design matrix entries for existing_dataset (to save on recomputation)
+    clip_scores: bool
+        Whether scores should be clipped before normalisation
+        Can help prevent extremely unbalanced weighting during sampling
 
     returns an array of scores, len(scores) == len(structures), np.sum(scores) == 1
     '''
@@ -440,9 +444,7 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         K = K_struct
 
 
-    scores = sparsifier(K)[N_existing:]
-
-    print(N_struct, scores.shape)
+    scores = sparsifier(K, clip_scores=clip_scores)[N_existing:]
 
     scores /= np.sum(scores)
 
