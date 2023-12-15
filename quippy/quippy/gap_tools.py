@@ -99,7 +99,7 @@ class DescXMLWrapper():
 
     def get_energy_design(self, structures):
         '''
-        Gets the segment of a design matrix corresponding to an energy observation on the structure for this descriptor
+        Gets the segment of a design matrix corresponding to an energy per atom observation on the structure for this descriptor
         ''' 
         from ase.atoms import Atoms
 
@@ -122,7 +122,7 @@ class DescXMLWrapper():
                 x_cut = quip_result["covariance_cutoff"]
 
                 k = self.cov_func(x, self.sparseX, x_cut, self.sparse_cuts, self.cov_prop)
-                K[i, :] = np.sum(k, axis=0)
+                K[i, :] = np.sum(k, axis=0) / len(structure)
         return K
 
 class GAPXMLWrapper():
@@ -467,7 +467,7 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         for i, desc in enumerate(gapxml.descriptors): 
             if weights[i] < weight_tol:
                 continue           
-            K_MM[m_start:m_start + desc.nsparse, m_start:m_start + desc.nsparse] = desc.cov_func(desc.sparsex, desc.sparseX, 
+            K_MM[m_start:m_start + desc.nsparse, m_start:m_start + desc.nsparse] = desc.cov_func(desc.sparseX, desc.sparseX, 
                                                                                                  desc.sparse_cuts, desc.sparse_cuts, 
                                                                                                  desc.cov_prop) * weights[i]
             m_start += desc.nsparse
@@ -475,7 +475,7 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         L = np.linalg.cholesky(K_MM + regularisation * np.eye(M))
 
         # Solve K_MM = K_NM @ K_MM^-1 @ K_MN to find K_MM
-        right = np.linalg.solve(K.T, L.T)
+        right = np.linalg.solve(L.T, K.T)
         K_NN = right.T @ right
         K = K_NN
 
