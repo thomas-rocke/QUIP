@@ -467,7 +467,9 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
         for i, desc in enumerate(gapxml.descriptors): 
             if weights[i] < weight_tol:
                 continue           
-            K_MM[m_start:m_start + desc.nsparse, m_start:m_start + desc.nsparse] = desc.get_energy_design(structures) * weights[i]
+            K_MM[m_start:m_start + desc.nsparse, m_start:m_start + desc.nsparse] = desc.cov_func(desc.sparsex, desc.sparseX, 
+                                                                                                 desc.sparse_cuts, desc.sparse_cuts, 
+                                                                                                 desc.cov_prop) * weights[i]
             m_start += desc.nsparse
 
         L = np.linalg.cholesky(K_MM + regularisation * np.eye(M))
