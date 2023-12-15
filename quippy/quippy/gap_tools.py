@@ -453,14 +453,22 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
 
     # Apply weights to K_NM
     m_start = 0
-    for i, desc in enumerate(gapxml.descriptors):  
+    for i, desc in enumerate(gapxml.descriptors): 
+        if weights[i] < weight_tol:
+                continue       
         K[:, m_start:m_start + desc.nsparse] *= weights[i]
+        m_start += desc.nsparse
+
+    # Not all M will be used, may be able to slice down matrices to reduce dimensionality of the problem
+    M_used = m_start
+
+    K = K[:, :M_used]
 
     if project:
         # Use K_MM to project K_NM onto K_NN
         # Essentially uses the same sparse approximation as a sparse GP (as used in GAP)
         # to estimate K_NN without directly computing 
-        K_MM = np.zeros((M, M))
+        K_MM = np.zeros((M_used, M_used))
 
         m_start = 0
 
@@ -472,12 +480,14 @@ def gap_score(gapxml, structures, sparsifier=get_cur_scores, existing_dataset=[]
                                                                                                  desc.cov_prop) * weights[i]
             m_start += desc.nsparse
 
-        L = np.linalg.cholesky(K_MM + regularisation * np.eye(M))
+        L = np.linalg.cholesky(K_MM + regularisation * np.eye(M_used))
 
         # Solve K_MM = K_NM @ K_MM^-1 @ K_MN to find K_MM
         right = np.linalg.solve(L.T, K.T)
         K_NN = right.T @ right
         K = K_NN
+
+    print(K.shape)
 
 
     scores = sparsifier(K, clip_scores=clip_scores)[N_existing:]
